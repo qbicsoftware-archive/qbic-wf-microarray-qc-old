@@ -1,0 +1,332 @@
+```{r img-setup, include=FALSE, cache=FALSE}
+knitr::opts_chunk$set(fig.width=12, fig.height=8, dpi=150)
+```
+
+```{r prepare, echo=FALSE, message=FALSE, warning=FALSE}
+library("Biobase")
+library("oligo")
+source('vars.R')
+``` 
+
+```{r read_files, echo=FALSE, message=FALSE, warning=FALSE}
+dataPath <- paste0(data,"data/")
+data <- read.celfiles(paste0(dataPath,row.names(pd)),sampleNames = row.names(pd),phenoData = pd,verbose = T)
+#data <- read.celfiles(celFiles,sampleNames= sampleNames(pd),phenoData = pd,verbose = T)
+```
+
+```{r annotate, echo=FALSE, warning=FALSE}
+annotation <- annotation(data)
+for (annotation in annotation){
+  if( !is.element(annotation, .packages(all.available = TRUE)) ) {
+    install.packages(annotation)
+  }
+  library(annotation,character.only = TRUE)
+}
+```
+
+### 1) Read in and basic corrections
+
+```{r db_and_correlation, echo=FALSE, warning=FALSE}
+conn <- db(pd.hugene.2.1.st)
+
+Pset <- fitProbeLevelModel(data)
+
+cor <- cor(exprs(data), use = "everything",method = c("pearson"))
+write.table(cor, "data/pearson_correlation_all_data.tsv", append = FALSE, quote = FALSE, sep = "\t",eol = "\n", na = "NA", dec = ".", row.names = T,  col.names = NA, qmethod = c("escape", "double"))
+```
+<!--use that for matrix eventually such as in the DESeq2 package for RNA-Seq experiments-->
+
+
+### 2) Boxplot of raw log intensities
+
+<!--Boxplots and histograms show the same differences in probe intensity behavior between arrays. In order to perform meaningful statistical analysis and inferences from the data, you need to ensure that all the samples are comparable. To examine and compare the overall distribution of log transformed PM intensities between the samples you can use a histogram but you will get a clearer view with a box plot. Box plots show:
+## the median: center value, half of the intensities are lower than this value, half of the intensities are higher (= line in the box)
+## the upper quartile: a quarter of the values are higher than this quartile (= upper border of the box)
+## the lower quartile: a quarter of the values are lower than this quartile (= lower border of the box)
+## the range: minimum and maximum value (= borders of the whiskers)
+##individual extreme values (= points outside the whiskers) -->
+
+```{r boxplot, echo=FALSE, warning=FALSE}
+
+par(oma=c(3,0,0,0))
+par(mfrow = c(1,2))
+par(cex.axis=0.9)
+boxplot(data, which='all', xlab="", col=darkColors(59), main="", ylab="log2 signal intensity (PM+bg)", las=2)
+boxplot(data, which='pm', xlab="", col=darkColors(59), main="", ylab="log2 signal intensity (PM only)", las=2)
+
+```
+
+<!--
+#boxplot(data, which='mm', xlab="", col=darkColors(59), main="", ylab="log2 signal intensity (MM only)", cex.axis=0.75, las=2)
+#usual no mismatch probes anymore, left on 'mm' plot
+#chip file overview, does not work for oligo package this way????????-->
+
+```{r length, echo=FALSE}
+
+length <- length(sampleNames(data))
+
+```
+
+### 3) Pseudo chip images
+
+```{r pseudo_chip, echo=FALSE}
+
+#To produce a spatial image of probe log intensities and probe raw intensities
+### Pseudo-image files
+#Chip pseudo-images are very useful for detecting spatial differences (artifacts) on the invidual arrays (so not for comparing between arrays).
+
+#for (chip in 1:length){
+#  png(paste("out/pseudo_image", sampleNames(data)[chip], ".png", sep = ""))
+#  image(data[,chip])
+#  dev.off()
+#}
+
+```
+
+```{r pseudo_chip_res, echo=FALSE}
+
+###to change color do something like
+#pdf("pseudo-image1.pdf")
+#image(data[, 1], col = gray((64:0)/64))
+#dev.off()
+
+#to check the positive and negative residuals:
+#for (resid in 1:length){
+#  png(paste("out/residual_image.", sampleNames(data)[resid], ".png", sep = ""))
+#  par(mfrow = c(2,2))
+#  image(Pset,which=resid,type="residuals")
+#  image(Pset,which=resid,type="pos.residuals")
+#  image(Pset,which=resid,type="neg.residuals")
+#  image(Pset,which=resid,type="sign.residuals")
+#  dev.off()
+#}
+
+```
+
+### 4) RLE and NUSE plots on dataset
+```{r rle_nuse, echo=FALSE}
+
+#RLE:relative log expression
+#NUSE:normalized unscaled standard error
+
+#In the NUSE plot, low-quality arrays are those that are significantly elevated or more spread out, relative to the other arrays. NUSE values are useful for comparing arrays within one dataset, but their magnitudes are not comparable across different datasets.
+#In the RLE plot (Figure 3.3, bottom), problematic arrays are indicated by larger spread, by a center location different from y = 0, or both. 
+par(oma=c(3,0,0,0))
+par(mfrow = c(1,2))
+par(cex.axis=0.9)
+NUSE(Pset, main="NUSE",ylim=c(0.5,3),outline=FALSE,col="lightblue",las=3,ylab="Normalized Unscaled Error (NUSE) values",whisklty=2,staplelty=1)
+RLE(Pset, main="RLE", ylim = c(-4, 4), outline = FALSE, col="mistyrose", las=3,ylab="Relative Log Expression (RLE) values",whisklty=2,staplelty=1)
+
+#make these plots with whiskers, too
+
+```
+
+### 5) Histogram to compare log2 intensities vs density between arrays
+
+```{r hist, echo=FALSE, warning=FALSE}
+
+#density plots of log base 2 intensities (log2(PMij) for array i and probe j) of perfect match probes for comparison of probe intensity behavior between different arrays. If you see differences in shape or center of the distributions, it means that normalization is required.
+hist(data, col = darkColors(59), lty = 1, xlab="log2 intensity", ylab="density", xlim = c(2, 12), type="l")
+legend("topright", col=darkColors(59), lwd=1, legend=sampleNames(data),cex=0.8)
+
+```
+
+### 6) MA plots raw data
+
+```{r ma_plots, echo=FALSE}
+#The MAplot also allows summarization, so groups can be compared more easily:
+grps <- as.character(data[[varOfInterest]])
+grps <- as.factor(grps)
+MAplot(data, pairs=TRUE, groups=grps)
+```
+
+### 7) RNA degradation check, not yet possible with oligo package, maybe use xps package for this?
+
+```{r affy_degradation, echo=FALSE}
+
+#throws errors, not sure how to fix or where to best call the function
+#pdf("out/RNA degradation plot.pdf")
+#AffyRNAdeg(data)
+#plotAffyRNAdeg()
+#plotAffyRNAdeg(AffyRNAdeg(data), col=darkColors(59))
+#legend(1,70, col=darkColors(59), lwd=1, legend=sampleNames(data),cex=0.75)
+#dev.off()
+
+#unload affy related packages again as analysis is focused on using oligo package function:
+#detach("package:affycoretools", unload=TRUE)
+#detach("package:affy", unload=TRUE)
+#library("oligo")
+
+```
+
+### 8) PCA plot before normalization
+
+```{r pca, echo=FALSE}
+pca_before <- prcomp(t(exprs(data)), scores=TRUE, scale. = TRUE, cor=TRUE)
+summary(pca_before)
+# sqrt of eigenvalues
+#pca_before$sdev
+#loadings
+#head(pca_before$rotation)
+#PCs (aka scores)
+#head(pca_before$x)
+
+# load ggplot2
+library("ggplot2")
+# create data frame with scores
+scores = as.data.frame(pca_before$x)
+# plot of observations
+ggplot(data = scores, aes(x = PC1, y = PC2)) +
+  geom_hline(yintercept = 0, colour = "gray65") +
+  geom_vline(xintercept = 0, colour = "gray65") +
+  #geom_text(colour = "black",label=sampleNames(data), size = 3,angle=40) +
+  geom_point(aes(colour = data[[varOfInterest]], shape=data[[varOfInterest]],group=data[[varOfInterest]]),size=3) +  #important line to setup legend correctly
+  theme(legend.title=element_blank()) +  ## turn off legend title
+  ggtitle("PCA plot before normalization")
+
+```
+
+## Data Normalization
+
+<!--#some flexibility for rma and or gcRMA etc is needed. Be sure that oligo and affy are not loaded at the same time
+
+#do something like this here if needed
+# detach("package:affycoretools", unload=TRUE)
+# detach("package:affy", unload=TRUE) -->
+
+```{r rma, echo=FALSE, warning=FALSE}
+#as default do rma here....
+
+eset <- rma(data)  #depending on chip such as ST chips, default used is target="core"
+
+#should not use rma(target ="probeset") for the Gene ST arrays, because tons of the probesets only have one probe at that summarization level.
+#just to check, in case of ST arrays
+#dim(rma(data,target="probeset"))
+#dim(rma(data,target="core"))
+
+#eset=object of class ExpressionSet described in the Biobase vignette
+#it does
+#Background correcting
+#Normalizing
+#Calculating Expression
+
+#Currently the rma function implements RMA in the following manner
+#1. Probe specific correction of the PM probes using a model based on observed intensity being the sum of signal and noise
+#2. Normalization of corrected PM probes using quantile normalization (Bolstad et al., 2003)
+#3. Calculation of Expression measure using median polish.
+
+```
+
+## Quality plots
+
+<!--when data analysis of actin and GAPDH expression as well as other control probes is needed see affy.masterv1.2_2.R script and work it in here.-->
+
+### Boxplot after normalization
+```{r boxplot_norm, echo=FALSE}
+par(oma=c(3,0,0,0))
+boxplot(exprs(eset), which='both', xlab="", col=darkColors(59), main="", ylab="log2 signal intensity", cex.axis=0.9, las=2)
+```
+
+<!--#Scatter matrix of arrays against one another
+#png("out/Scatter plot after normalization.png")
+#scatter <- pairs(exprs(eset), pch=".",main="Scatter plots", cex=0.5)
+#dev.off()
+#this plot indicate high or low correlation of the data. PCA and such as are useful to reduce complexity.
+###this needs work, not useful for medium-large number of samples and very slow -->
+
+### MVA plots of arrays against one another (log-intensity vs log-ratio)
+
+A matrix of M vs. A plots is produced. Plots are made on the upper triangle and the IQR of the Ms are displayed in the lower triangle
+
+```{r ma_plot_norm, echo=FALSE}
+
+index <- which(eset[["treatment"]] == "control") 
+A <- rowMeans(exprs(eset[, index])) - rowMeans(exprs(eset[, -index]))
+M <- rowMeans(exprs(eset))
+
+#pdf("out/MA plot after normalizationXXX.pdf")
+#smoothScatter(M, A, ylab = "Average Log2 Intensity (M)", xlab = "Log2-ratio treatment(s) vs control (A)", main = "MA #plot after normalization")
+#abline(h = c(-1,1))
+#dev.off()
+
+#The MAplot also allows summarization, so groups can be compared more easily:
+MAplot(exprs(eset), pairs=TRUE, groups=grps)
+
+```
+
+## Clustering
+
+```{r cluster, echo=FALSE, message=FALSE}
+
+library("dendextend")
+#for arrays, problem: arrays are not row names but at column position, thus transpose is needed
+d <- dist(t(exprs(eset))) # find distance matrix
+hc <- hclust(d)               # apply hierarchical clustering
+#plot(hc)
+
+dend <- as.dendrogram(hc)
+#remember groups
+grps <- as.character(eset[[varOfInterest]])
+grps <- as.factor(grps)
+length=length(levels(grps))
+colorCodes = palette(rainbow(length))
+labels_colors(dend) <- colorCodes[grps][order.dendrogram(dend)]
+
+#pdf("out/Cluster Dendogram.pdf")
+dend %>% set("labels_cex",0.8) %>% plot()
+legend("topright", col=colorCodes, lwd=1,cex=0.9, legend=levels(grps))
+#dev.off()
+
+```
+
+### PCA after normalization
+
+```{r pca_norm, echo=FALSE}
+
+pca <- prcomp(t(exprs(eset)), scores=TRUE, cor=TRUE)
+
+summary(pca)
+
+# load ggplot2
+library(ggplot2)
+# create data frame with scores
+scores = as.data.frame(pca$x)
+# plot of observations
+ggplot(data = scores, aes(x = PC1, y = PC2)) +
+  geom_hline(yintercept = 0, colour = "gray65") +
+  geom_vline(xintercept = 0, colour = "gray65") +
+  #geom_text(colour = "black",label=sampleNames(data), size = 3,angle=40) +
+  geom_point(aes(colour = eset[[varOfInterest]], shape=eset[[varOfInterest]],group=eset[[varOfInterest]]),size=3) +  #important line to setup legend correctly
+  xlab("PC1") +
+  ylab("PC2") +
+  theme(legend.title=element_blank()) +  ## turn off legend title
+  ggtitle("PCA plot after normalization")
+
+```
+## Scree plot to verify plotting of PC1 vs PC2
+
+```{r pca_scree, echo=FALSE, message=FALSE, warning=FALSE}
+
+detach("package:pd.hugene.2.1.st", unload=TRUE)
+detach("package:oligo", unload=TRUE)
+library("affycoretools")
+plotPCA(exprs(eset),main="Principal component analysis (PCA)", screeplot=TRUE, outside=TRUE)
+
+```
+
+## Non-specific filtering of data
+
+```{r filtering, echo=FALSE, message=FALSE, warning=FALSE}
+
+# let us explore how nonspecific filtering can improve our analysis. To this end, we calculate the overall variability across arrays of each probe set, regardless of the sample labels. For this, we use the function rowSds, which calculates the standard deviation for each row. A reasonable alternative would be to calculate the interquartile range (IQR).
+library("genefilter")
+sds = rowSds(exprs(eset))
+sh = shorth(sds)
+#sh
+
+#We can plot the histogram of the distribution of sds. The function shorth calculates the midpoint of the shorth (the shortest interval containing half of the data), and is in many cases a reasonable estimator of the “peak” of a distribution. Its value is drawn as a dashed vertical line in Figure.
+
+hist(sds, breaks=50, xlab="standard deviation")
+abline(v=sh, col="blue", lwd=3, lty=2)
+
+```
